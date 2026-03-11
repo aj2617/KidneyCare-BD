@@ -183,7 +183,7 @@ export default function App() {
             )}
           </AnimatePresence>
         </nav>
-      ) : currentPage === 'landing' ? (
+      ) : (
         <nav className="bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="min-h-[72px] flex items-center justify-between gap-4">
@@ -244,7 +244,7 @@ export default function App() {
             </div>
           </div>
         </nav>
-      ) : null}
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <motion.div

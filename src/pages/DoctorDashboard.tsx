@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Users, Search, Bell, Filter, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import { Users, Search, Bell, Filter, ChevronRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function DoctorDashboard({ onSelectPatient }: { onSelectPatient: (id: number) => void }) {

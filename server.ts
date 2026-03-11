@@ -115,6 +115,105 @@ async function startServer() {
 
   // --- API Routes ---
 
+  const getAdminHeatmapData = () => db.prepare(`
+    SELECT u.district as district, COUNT(*) as count, AVG(COALESCE(p.risk_score, 0)) as avg_risk
+    FROM users u
+    JOIN patients p ON u.id = p.user_id
+    WHERE u.role = 'patient' AND u.district IS NOT NULL AND TRIM(u.district) <> ''
+    GROUP BY u.district
+    ORDER BY count DESC, u.district ASC
+  `).all() as Array<{ district: string; count: number; avg_risk: number | null }>;
+
+  const buildPolicyReports = () => {
+    const heatmap = getAdminHeatmapData();
+    const totalPatients = heatmap.reduce((sum, row) => sum + row.count, 0);
+    const nationalAverageRisk = heatmap.length
+      ? heatmap.reduce((sum, row) => sum + (row.avg_risk ?? 0), 0) / heatmap.length
+      : 0;
+    const topDistricts = heatmap.slice(0, 3);
+    const reportDate = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(new Date());
+
+    const reports = [
+      {
+        id: 'resource-allocation-plan',
+        title: 'Resource Allocation Plan',
+        desc: topDistricts.length
+          ? `Prioritize dialysis and specialist capacity in ${topDistricts.map((d) => d.district).join(', ')} based on current patient concentration.`
+          : 'Prioritize dialysis and specialist capacity using district-level patient concentration.',
+        date: reportDate,
+        filename: `KidneyCareBD_Resource_Allocation_Plan_${new Date().toISOString().split('T')[0]}.md`,
+        content: [
+          '# Resource Allocation Plan',
+          '',
+          `Report date: ${reportDate}`,
+          `Total tracked patients: ${totalPatients}`,
+          `Average national risk score: ${nationalAverageRisk.toFixed(1)}`,
+          '',
+          '## Recommended high-priority districts',
+          ...(topDistricts.length
+            ? topDistricts.map((district, index) => `${index + 1}. ${district.district}: ${district.count} patients, avg risk ${Math.round(district.avg_risk ?? 0)}`)
+            : ['No district-level patient data available yet.']),
+          '',
+          '## Recommended actions',
+          '1. Expand screening and nephrology referral capacity in the highest-burden districts.',
+          '2. Prioritize medicine stock and dialysis support where average risk remains elevated.',
+          '3. Reassess district allocations monthly as new patient and vitals data arrive.',
+        ].join('\n'),
+      },
+      {
+        id: 'rural-screening-initiative',
+        title: 'Rural Screening Initiative',
+        desc: heatmap.length
+          ? `Deploy mobile screening in non-metro districts with elevated risk, starting with ${heatmap.filter((d) => !['Dhaka', 'Chittagong'].includes(d.district)).slice(0, 3).map((d) => d.district).join(', ') || 'priority rural districts'}.`
+          : 'Deploy mobile screening in non-metro districts with elevated risk.',
+        date: reportDate,
+        filename: `KidneyCareBD_Rural_Screening_Initiative_${new Date().toISOString().split('T')[0]}.md`,
+        content: [
+          '# Rural Screening Initiative',
+          '',
+          `Report date: ${reportDate}`,
+          '',
+          '## Rationale',
+          'Rural patients often present later in the disease course and have weaker follow-up continuity.',
+          '',
+          '## Suggested focus areas',
+          ...(heatmap.filter((d) => !['Dhaka', 'Chittagong'].includes(d.district)).slice(0, 5).map((district, index) =>
+            `${index + 1}. ${district.district}: ${district.count} tracked patients, avg risk ${Math.round(district.avg_risk ?? 0)}`
+          ) || ['1. No rural district data available yet.']),
+          '',
+          '## Operational recommendations',
+          '1. Schedule rotating mobile creatinine and blood pressure screening camps.',
+          '2. Pair each camp with referral routing to the nearest nephrology-capable center.',
+          '3. Track conversion from screening to follow-up visit as a monthly KPI.',
+        ].join('\n'),
+      },
+      {
+        id: 'medication-subsidy-impact',
+        title: 'Medication Subsidy Impact',
+        desc: `Review high-risk patient burden against current subsidy coverage assumptions using ${totalPatients} tracked patient records.`,
+        date: reportDate,
+        filename: `KidneyCareBD_Medication_Subsidy_Impact_${new Date().toISOString().split('T')[0]}.md`,
+        content: [
+          '# Medication Subsidy Impact',
+          '',
+          `Report date: ${reportDate}`,
+          `Tracked patient records used: ${totalPatients}`,
+          '',
+          '## Observations',
+          `National average risk score across districts is ${nationalAverageRisk.toFixed(1)}.`,
+          'Higher-risk districts should be prioritized for antihypertensive, diabetes, and renal-protective medication support.',
+          '',
+          '## Recommended actions',
+          '1. Link subsidy eligibility to risk score and CKD stage progression.',
+          '2. Monitor refill adherence alongside vitals deterioration.',
+          '3. Re-run the subsidy impact review after each monthly data refresh.',
+        ].join('\n'),
+      },
+    ];
+
+    return reports;
+  };
+
   // Auto-seed if empty
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as any;
   if (userCount.count === 0) {
@@ -384,13 +483,7 @@ async function startServer() {
   // Admin Routes
   app.get('/api/admin/heatmap', authenticateToken, (req: any, res) => {
     if (req.user.role !== 'admin') return res.sendStatus(403);
-    const data = db.prepare(`
-      SELECT district, COUNT(*) as count, AVG(risk_score) as avg_risk 
-      FROM users u 
-      JOIN patients p ON u.id = p.user_id 
-      GROUP BY district
-    `).all();
-    res.json(data);
+    res.json(getAdminHeatmapData());
   });
 
   app.get('/api/admin/export-research-data', authenticateToken, (req: any, res) => {
@@ -415,6 +508,45 @@ async function startServer() {
     `).all();
 
     res.json(data);
+  });
+
+  app.get('/api/admin/reports', authenticateToken, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.sendStatus(403);
+    res.json(buildPolicyReports());
+  });
+
+  app.get('/api/admin/export-national-report', authenticateToken, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.sendStatus(403);
+
+    const heatmap = getAdminHeatmapData();
+    const totalPatients = heatmap.reduce((sum, row) => sum + row.count, 0);
+    const averageRisk = heatmap.length
+      ? heatmap.reduce((sum, row) => sum + (row.avg_risk ?? 0), 0) / heatmap.length
+      : 0;
+
+    const content = [
+      '# KidneyCare BD National CKD Burden Report',
+      '',
+      `Generated on: ${new Date().toISOString()}`,
+      `Total tracked patients: ${totalPatients}`,
+      `Districts represented: ${heatmap.length}`,
+      `Average district risk score: ${averageRisk.toFixed(1)}`,
+      '',
+      '## District summary',
+      ...(heatmap.length
+        ? heatmap.map((district, index) => `${index + 1}. ${district.district}: ${district.count} patients, avg risk ${Math.round(district.avg_risk ?? 0)}`)
+        : ['No patient data available.']),
+      '',
+      '## Policy priorities',
+      '1. Expand screening in the highest-burden districts.',
+      '2. Improve follow-up capacity for districts with elevated average risk.',
+      '3. Use monthly exports to compare district trend movement over time.',
+    ].join('\n');
+
+    res.json({
+      filename: `KidneyCareBD_National_CKD_Burden_Report_${new Date().toISOString().split('T')[0]}.md`,
+      content,
+    });
   });
 
   // Education Hub
