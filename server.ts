@@ -10,7 +10,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const databasePath = process.env.DATABASE_PATH || process.env.DATABASE_URL || 'kidneycare.db';
+const railwayVolumePath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const databasePath =
+  process.env.DATABASE_PATH ||
+  process.env.DATABASE_URL ||
+  (railwayVolumePath ? path.join(railwayVolumePath, 'kidneycare.db') : 'kidneycare.db');
 const databaseDir = path.dirname(databasePath);
 
 if (databaseDir && databaseDir !== '.') {

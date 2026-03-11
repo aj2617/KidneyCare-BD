@@ -106,39 +106,46 @@ npm run build
 npm run start
 ```
 
-## Render Deployment
+## Railway Deployment
 
-This repository is now prepared for Render deployment with SQLite persistence.
+This repository is now prepared for Railway deployment with SQLite persistence.
 
 ### What is already configured
 
-- `render.yaml` defines a Render web service blueprint
+- `railway.json` defines the Railway build and start commands
 - `server.ts` reads `PORT` automatically
-- `server.ts` reads `DATABASE_PATH` so SQLite can live on a persistent Render disk
-- `/healthz` is available for Render health checks
+- `server.ts` supports `DATABASE_PATH`
+- `server.ts` also supports `RAILWAY_VOLUME_MOUNT_PATH`, which Railway exposes for mounted volumes
+- `/healthz` is available for health checks
 - the database seeds itself automatically on first boot if the file is empty
 
-### Why a persistent disk is required
+### Why a volume is required
 
-SQLite stores data in a local file. On Render, the normal service filesystem is ephemeral, so the app must write the database to a mounted disk such as `/var/data/kidneycare.db`.
+SQLite stores data in a local file. Railway services need a mounted volume if you want that file to persist across restarts and deployments.
 
 ### Deploy steps
 
 1. Push the repository to GitHub
-2. In Render, create a new Blueprint or Web Service from the repository
-3. Ensure the service uses the settings from `render.yaml`
-4. Let Render create the persistent disk mounted at `/var/data`
-5. Deploy
+2. In Railway, create a new project from the GitHub repository
+3. Let Railway detect the app using `railway.json`
+4. Add a volume to the service
+5. Mount the volume to a path such as `/data`
+6. Set either:
+   - `DATABASE_PATH=/data/kidneycare.db`
+   - or rely on `RAILWAY_VOLUME_MOUNT_PATH` and let the app create `kidneycare.db` there automatically
+7. Set `NODE_ENV=production`
+8. Set `JWT_SECRET` to a long random string
+9. Deploy
 
 On the first deploy, the app will create the database file and seed demo users and sample patient data automatically.
 
-### Important environment values on Render
+### Important environment values on Railway
 
 - `NODE_ENV=production`
-- `DATABASE_PATH=/var/data/kidneycare.db`
 - `JWT_SECRET=<generated secret>`
+- Optional: `DATABASE_PATH=/data/kidneycare.db`
 
-These are already included in `render.yaml`.
+If you attach a Railway volume and mount it to `/data`, using `DATABASE_PATH=/data/kidneycare.db` is the clearest setup.
 
 ## Demo Credentials
 
@@ -164,7 +171,7 @@ The database schema is created automatically in `server.ts` at startup. Main tab
 
 The app uses a deliberately simple schema so it is easy to demonstrate and easy for students or new contributors to extend.
 
-For Render deployment, the same schema and seed flow are used. The only difference is that the SQLite file should live on the Render disk mount path instead of the project root.
+For Railway deployment, the same schema and seed flow are used. The only difference is that the SQLite file should live on the mounted Railway volume path instead of the project root.
 
 ## API Overview
 
