@@ -12,7 +12,8 @@ const __dirname = path.dirname(__filename);
 const db = new Database('kidneycare.db');
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-kidneycare-bd';
 
-// Initialize Database Tables
+// The backend keeps schema creation colocated with the server entry point so a new
+// contributor can run the project without any separate migration step.
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,7 +101,8 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // Auth Middleware
+  // Every protected route uses the same JWT middleware. The token stores only the
+  // minimum user context needed by the frontend: id, role, and display name.
   const authenticateToken = (req: any, res: any, next: any) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -115,6 +117,8 @@ async function startServer() {
 
   // --- API Routes ---
 
+  // Admin reporting is derived from live patient data instead of stored snapshots.
+  // That keeps the reporting flow simple and guarantees exports reflect current data.
   const getAdminHeatmapData = () => db.prepare(`
     SELECT u.district as district, COUNT(*) as count, AVG(COALESCE(p.risk_score, 0)) as avg_risk
     FROM users u
@@ -124,6 +128,8 @@ async function startServer() {
     ORDER BY count DESC, u.district ASC
   `).all() as Array<{ district: string; count: number; avg_risk: number | null }>;
 
+  // Policy reports are generated on demand from aggregated district-level data.
+  // This makes the feature easy to demo and easy to extend without a reporting job.
   const buildPolicyReports = () => {
     const heatmap = getAdminHeatmapData();
     const totalPatients = heatmap.reduce((sum, row) => sum + row.count, 0);
@@ -214,7 +220,8 @@ async function startServer() {
     return reports;
   };
 
-  // Auto-seed if empty
+  // Seed records make the application presentation-ready after the first startup.
+  // This is useful for demos, grading, and contributor onboarding.
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as any;
   if (userCount.count === 0) {
     console.log('Database empty, seeding initial data...');
@@ -286,6 +293,7 @@ async function startServer() {
       const result = db.prepare('INSERT INTO users (name, email, password, role, division, district) VALUES (?, ?, ?, ?, ?, ?)').run(name, email, hashedPassword, role, division, district);
       const userId = result.lastInsertRowid;
       
+      // Only patient registrations need a paired row in the patients table.
       if (role === 'patient') {
         db.prepare('INSERT INTO patients (user_id) VALUES (?)').run(userId);
       }
@@ -418,7 +426,8 @@ async function startServer() {
     if (patient.diabetes) score += 25;
     if (patient.hypertension) score += 20;
     if (patient.family_history) score += 15;
-    if (user.district && !['Dhaka', 'Chittagong'].includes(user.district)) score += 5; // Rural proxy
+    // The district rule is a simplified rural proxy for the current prototype.
+    if (user.district && !['Dhaka', 'Chittagong'].includes(user.district)) score += 5;
 
     db.prepare('UPDATE patients SET risk_score = ? WHERE user_id = ?').run(score, req.user.id);
     res.json({ score });
@@ -489,7 +498,8 @@ async function startServer() {
   app.get('/api/admin/export-research-data', authenticateToken, (req: any, res) => {
     if (req.user.role !== 'admin') return res.sendStatus(403);
     
-    // Join users, patients, and their latest vitals/gfr for a comprehensive research snapshot
+    // Export a denormalized dataset so the result can be opened directly in spreadsheet
+    // tools or used for external research analysis without extra joins.
     const data = db.prepare(`
       SELECT 
         u.id as user_id, u.name, u.email, u.division, u.district,
@@ -555,7 +565,8 @@ async function startServer() {
     res.json(articles);
   });
 
-  // Helper function for alerts
+  // Alerts are currently generated from recent vitals only. This is intentionally
+  // simple so contributors can replace it with more advanced clinical rules later.
   function checkAlerts(patientId: number) {
     const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(patientId) as any;
     const latestVitals = db.prepare('SELECT * FROM vitals_log WHERE patient_id = ? ORDER BY date DESC LIMIT 2').all(patientId) as any[];
@@ -568,7 +579,8 @@ async function startServer() {
     }
   }
 
-  // Vite middleware for development
+  // In development the Express server hosts Vite in middleware mode, so contributors
+  // only need one process. In production the same server serves the built SPA.
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

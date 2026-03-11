@@ -28,6 +28,8 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    // Some page transitions are triggered from child components through a lightweight
+    // custom event instead of a routing library.
     const handleNavigate = (e: any) => {
       setCurrentPage(e.detail);
     };
@@ -36,6 +38,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Role decides the default landing screen after authentication.
     if (user) {
       if (user.role === 'patient') setCurrentPage('dashboard');
       else if (user.role === 'doctor') setCurrentPage('doctor-dashboard');
@@ -65,6 +68,9 @@ export default function App() {
   };
 
   const renderPage = () => {
+    // This app uses simple state-based page rendering rather than React Router.
+    // That keeps the navigation model compact for a demo and easy for students
+    // or new contributors to follow.
     if (currentPage === 'landing') return <Landing onStart={() => setCurrentPage('register')} onLogin={() => setCurrentPage('login')} />;
     if (currentPage === 'login') return <Login onRegister={() => setCurrentPage('register')} />;
     if (currentPage === 'register') return <Register onLogin={() => setCurrentPage('login')} />;
