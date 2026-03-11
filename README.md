@@ -103,7 +103,42 @@ This command starts the Express server from `server.ts`. In development, Vite ru
 ```bash
 npm run lint
 npm run build
+npm run start
 ```
+
+## Render Deployment
+
+This repository is now prepared for Render deployment with SQLite persistence.
+
+### What is already configured
+
+- `render.yaml` defines a Render web service blueprint
+- `server.ts` reads `PORT` automatically
+- `server.ts` reads `DATABASE_PATH` so SQLite can live on a persistent Render disk
+- `/healthz` is available for Render health checks
+- the database seeds itself automatically on first boot if the file is empty
+
+### Why a persistent disk is required
+
+SQLite stores data in a local file. On Render, the normal service filesystem is ephemeral, so the app must write the database to a mounted disk such as `/var/data/kidneycare.db`.
+
+### Deploy steps
+
+1. Push the repository to GitHub
+2. In Render, create a new Blueprint or Web Service from the repository
+3. Ensure the service uses the settings from `render.yaml`
+4. Let Render create the persistent disk mounted at `/var/data`
+5. Deploy
+
+On the first deploy, the app will create the database file and seed demo users and sample patient data automatically.
+
+### Important environment values on Render
+
+- `NODE_ENV=production`
+- `DATABASE_PATH=/var/data/kidneycare.db`
+- `JWT_SECRET=<generated secret>`
+
+These are already included in `render.yaml`.
 
 ## Demo Credentials
 
@@ -128,6 +163,8 @@ The database schema is created automatically in `server.ts` at startup. Main tab
 - `articles`
 
 The app uses a deliberately simple schema so it is easy to demonstrate and easy for students or new contributors to extend.
+
+For Render deployment, the same schema and seed flow are used. The only difference is that the SQLite file should live on the Render disk mount path instead of the project root.
 
 ## API Overview
 

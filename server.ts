@@ -4,12 +4,20 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database('kidneycare.db');
+const databasePath = process.env.DATABASE_PATH || process.env.DATABASE_URL || 'kidneycare.db';
+const databaseDir = path.dirname(databasePath);
+
+if (databaseDir && databaseDir !== '.') {
+  fs.mkdirSync(databaseDir, { recursive: true });
+}
+
+const db = new Database(databasePath);
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-kidneycare-bd';
 
 // The backend keeps schema creation colocated with the server entry point so a new
@@ -100,6 +108,10 @@ db.exec(`
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  app.get('/healthz', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
 
   // Every protected route uses the same JWT middleware. The token stores only the
   // minimum user context needed by the frontend: id, role, and display name.
@@ -592,9 +604,10 @@ async function startServer() {
     app.get('*', (req, res) => res.sendFile(path.resolve(__dirname, 'dist', 'index.html')));
   }
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Using database at: ${databasePath}`);
   });
 }
 
